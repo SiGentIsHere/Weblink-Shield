@@ -1,0 +1,25 @@
+# Build output
+target/
+
+# IDE
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node / frontend (if added later)
+node_modules/
+dist/
+build/
+
+# Maven wrapper (keep the JAR for portability)
+!.mvn/wrapper/maven-wrapper.jar
