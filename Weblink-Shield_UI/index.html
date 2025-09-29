@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Weblink Shield</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <style>
+        :root{
+            --bg:#ffffff; --text:#0b1220; --muted:#6c7890; --card:#ffffff; --border:#e6ebf2;
+            --primary:#2667ff; --primary-600:#1f57d6; --good:#15a34a; --warn:#f59e0b; --bad:#ef4444;
+            --content-max: 1080px;
+        }
+        *{box-sizing:border-box}
+        html,body{height:100%}
+        body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial;overflow-x:hidden}
+        /* Header */
+        header{
+            width:100%; position:sticky; top:0; z-index:10; background:#fff;
+            border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:center;
+        }
+        .header-inner{
+            width:100%; max-width:var(--content-max); padding:14px 18px;
+            display:flex; align-items:center; justify-content:flex-start; gap:10px;
+        }
+        .logo{width:20px;height:20px;border-radius:4px;background:#2667ff;display:inline-block}
+        .brand{font-weight:800; letter-spacing:.2px}
+        /* Main container */
+        .page{display:flex; justify-content:center; width:100%}
+        .container{
+            width:100%; max-width:var(--content-max); padding:16px;
+            display:grid; gap:16px; grid-template-columns: 1fr; /* single column responsive */
+        }
+        .card{
+            background:var(--card); border:1px solid var(--border); border-radius:14px;
+            padding:20px; display:flex; flex-direction:column; gap:14px; align-items:stretch;
+        }
+        .muted{color:var(--muted)}
+        h1,h2,h3{margin:0}
+        p{margin:.25rem 0}
+        hr{border:none;border-top:1px solid var(--border);margin:12px 0}
+        /* Inputs */
+        .url-row{display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:center}
+        input[type="url"]{
+            width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border);
+            outline:none; font-size:16px; background:#fff;
+        }
+        button{
+            appearance:none; border:1px solid var(--primary); background:var(--primary);
+            color:#fff; padding:12px 18px; border-radius:10px; cursor:pointer; font-weight:700;
+        }
+        button.secondary{background:#fff; color:var(--primary)}
+        button:disabled{opacity:.6; cursor:not-allowed}
+        .qr-row{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+        input[type=file]{display:none}
+        .file-label{
+            border:1px solid var(--primary); color:var(--primary); background:#fff; border-radius:10px; padding:10px 16px;
+            cursor:pointer; font-weight:700; display:inline-flex; gap:8px; align-items:center;
+        }
+        /* Gauge */
+        .gwrap{display:flex; justify-content:center; align-items:center}
+        .gauge{width:240px; height:240px; position:relative}
+        .gauge svg{transform:rotate(-90deg)}
+        .gauge .center{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:44px}
+        .riskBadge{display:inline-block; border:1px solid var(--border); border-radius:999px; padding:8px 12px; font-weight:700; width:max-content}
+        .risk-safe{color:var(--good)} .risk-suspicious{color:var(--warn)} .risk-malicious{color:var(--bad)}
+        /* Spinner */
+        .spinner{width:18px;height:18px;border:3px solid #d3ddff;border-top-color:#2b5eff;border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        /* Left-aligned list blocks */
+        .checklist{display:flex; flex-direction:column; gap:10px}
+        .check{display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:12px}
+        .panel{padding:6px 0 0}
+        ul.clean{margin:8px 0 0; padding-left:18px}
+        .code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; word-break:break-all}
+        #err{display:none;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239;padding:10px;border-radius:10px}
+        /* Video */
+        .videoWrap{border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#f7f8ff}
+        video{width:100%; height:auto; display:block}
+        /* 2-column at wide screens: left = inputs/summary, right = results */
+        @media (min-width: 1000px){
+            .container{grid-template-columns: 1.1fr .9fr; align-items:start}
+        }
+    </style>
+    <!-- iOS-friendly ZXing UMD for QR (camera + image) -->
+    <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+</head>
+<body>
+<!-- Header (logo + name on the left) -->
+<header>
+    <div class="header-inner">
+        <span class="logo"></span>
+        <span class="brand">Weblink Shield</span>
+    </div>
+</header>
+
+<div class="page">
+    <main class="container">
+        <!-- LEFT column: input + summary -->
+        <section class="card">
+            <h2>Scan Web Links for Security Threats</h2>
+            <p class="muted">Enter a URL or scan a QR code with your camera.</p>
+
+            <div id="err"></div>
+
+            <!-- URL + aligned Scan button -->
+            <div class="url-row">
+                <input id="urlInput" type="url" placeholder="https://example.com/path?query=1" />
+                <button id="btnAnalyze"><span id="btnSpin" class="spinner" style="display:none"></span>Scan</button>
+            </div>
+
+            <hr/>
+
+            <!-- QR: either Camera or Upload Image -->
+            <div class="qr-row">
+                <button class="secondary" id="btnStartCam">Scan QR (camera)</button>
+                <button class="secondary" id="btnStopCam">Stop camera</button>
+
+                <input id="qrFile" type="file" accept="image/*" />
+                <label for="qrFile" class="file-label">Upload QR image</label>
+            </div>
+            <p class="muted" id="camHint">Tip: use the HTTPS ngrok link on iPhone/iPad so Safari allows camera access.</p>
+            <div class="videoWrap" id="videoPanel" style="display:none"><video id="video" playsinline></video></div>
+
+            <hr/>
+
+            <!-- Gauge -->
+            <div class="gwrap">
+                <div class="gauge">
+                    <svg width="240" height="240">
+                        <circle cx="120" cy="120" r="102" stroke="#eef2ff" stroke-width="16" fill="none"/>
+                        <circle id="gaugeStroke" cx="120" cy="120" r="102" stroke="#2667ff" stroke-width="16" fill="none"
+                                stroke-linecap="round" stroke-dasharray="641" stroke-dashoffset="641"/>
+                    </svg>
+                    <div id="gaugeText" class="center">0%</div>
+                </div>
+            </div>
+            <span id="riskBadge" class="riskBadge">Risk Level: —</span>
+        </section>
+
+        <!-- RIGHT column: Live Result + report (left-aligned) -->
+        <section class="card">
+            <h3>Live Result</h3>
+            <p class="muted">Realtime pipeline:
+                <b id="stQueued">Queued</b> →
+                <b id="stCore">Core</b> →
+                <b id="stStatic">Static</b> →
+                <b id="stSandbox">Sandbox</b> →
+                <b id="stDone">Done</b>
+            </p>
+            <p><b>URL:</b> <span id="outUrl" class="code muted">—</span></p>
+            <p><b>Verdict:</b> <span id="outVerdict" class="muted">—</span> · <b>Score:</b> <span id="outScore" class="muted">—</span></p>
+
+            <div id="warnBox" style="display:none; border:1px solid #fee2e2; background:#fff1f2; color:#9f1239; border-radius:10px; padding:10px; margin:8px 0;">
+                <b>Note:</b> <span id="warnText"></span>
+            </div>
+
+            <div class="panel">
+                <b>Reasons</b>
+                <ul id="outReasons" class="clean muted"><li>—</li></ul>
+            </div>
+
+            <hr/>
+
+            <!-- Threat Analysis Summary (checkbox list, left-aligned) -->
+            <h3>Threat Analysis Summary</h3>
+            <div class="checklist">
+                <label class="check"><input type="checkbox" id="chkHeur" disabled /> <span>URL heuristics</span></label>
+                <label class="check"><input type="checkbox" id="chkTls" disabled /> <span>TLD & TLS intel</span></label>
+                <label class="check"><input type="checkbox" id="chkStatic" disabled /> <span>Static analysis (Step 2)</span></label>
+                <label class="check"><input type="checkbox" id="chkSandbox" disabled /> <span>Sandbox (Step 3)</span></label>
+            </div>
+
+            <hr/>
+
+            <h3>Daily Security Report</h3>
+            <div class="panel">
+                <b>🔐 Security Recommendations</b>
+                <ul class="clean" id="recoList"><li class="muted">Recommendations appear based on reasons.</li></ul>
+            </div>
+            <div class="panel">
+                <b>🧩 Script Analysis</b>
+                <p class="muted">Reserved for Step 2 static analysis.</p>
+            </div>
+            <div class="panel">
+                <b>📄 Content Analysis</b>
+                <p class="muted">Reserved for content signals.</p>
+            </div>
+            <div class="panel">
+                <b>🌐 Domain Reputation</b>
+                <p class="muted">WHOIS/TLS/domain age when enabled.</p>
+            </div>
+        </section>
+    </main>
+</div>
+
+<!-- ZXing already included above -->
+<script>
+    // ---------- Helpers ----------
+    const API_BASE = "https://amalia-unshriven-lanceolately.ngrok-free.dev";
+    const $ = id => document.getElementById(id);
+    const ERR = $('err');
+    function showErr(m){ ERR.textContent=m; ERR.style.display='block'; console.error(m) }
+    function clearErr(){ ERR.style.display='none' }
+
+    async function postJSON(url, body){
+        const res = await fetch(url, {
+            method:'POST',
+            headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'1'},
+            body: JSON.stringify(body)
+        });
+        if(!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+    async function getJSON(url){
+        const res = await fetch(url, { headers:{'ngrok-skip-browser-warning':'1'} });
+        if(!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+    function stream(jobId, onSnap){
+        const es = new EventSource(`${API_BASE}/api/v1/scan/${jobId}/stream?ngrok-skip-browser-warning=1`);
+        es.addEventListener('snapshot', e => onSnap(JSON.parse(e.data)));
+        es.onerror = () => es.close();
+        return () => es.close();
+    }
+
+    // ---------- UI refs ----------
+    const urlInput=$('urlInput'), btnAnalyze=$('btnAnalyze'), btnSpin=$('btnSpin');
+    const outUrl=$('outUrl'), outVerdict=$('outVerdict'), outScore=$('outScore'), outReasons=$('outReasons');
+    const stQueued=$('stQueued'), stCore=$('stCore'), stStatic=$('stStatic'), stSandbox=$('stSandbox'), stDone=$('stDone');
+    const gaugeStroke=$('gaugeStroke'), gaugeText=$('gaugeText'), riskBadge=$('riskBadge');
+    const chkHeur=$('chkHeur'), chkTls=$('chkTls'), chkStatic=$('chkStatic'), chkSandbox=$('chkSandbox');
+
+    // ---------- Gauge / risk ----------
+    const CIRC = 2*Math.PI*102; // r=102 => 641
+    function setGauge(pct, verdict){
+        const v = Math.max(0, Math.min(100, pct|0));
+        gaugeStroke.style.strokeDashoffset = String(CIRC - (CIRC*v/100));
+        gaugeStroke.style.stroke = verdictColor(verdict) || '#2667ff';
+        gaugeText.textContent = v + '%';
+        riskBadge.textContent = 'Risk Level: ' + (verdict? verdict.toUpperCase():'—');
+        riskBadge.className='riskBadge ' + riskClass(verdict);
+    }
+    function verdictColor(v){ v=(v||'').toLowerCase();
+        if(v==='safe') return '#15a34a'; if(v==='suspicious') return '#f59e0b'; if(v==='malicious') return '#ef4444'; return '#2667ff';
+    }
+    function riskClass(v){ v=(v||'').toLowerCase();
+        return v==='safe'?'risk-safe':v==='suspicious'?'risk-suspicious':v==='malicious'?'risk-malicious':'';
+    }
+    function setStage(status){
+        const gray=el=>el.classList.add('muted'), blue=el=>el.classList.remove('muted');
+        [stQueued,stCore,stStatic,stSandbox,stDone].forEach(gray);
+        if(status==='QUEUED') blue(stQueued);
+        if(status==='CORE_RUNNING') blue(stCore);
+        if(status==='STATIC_RUNNING') blue(stStatic);
+        if(status==='SANDBOX_RUNNING') blue(stSandbox);
+        if(status==='DONE') blue(stDone);
+        // tick checkboxes roughly by stage
+        chkHeur.checked = status!=='QUEUED';
+        chkTls.checked = status==='CORE_RUNNING' || status==='STATIC_RUNNING' || status==='SANDBOX_RUNNING' || status==='DONE';
+        chkStatic.checked = status==='STATIC_RUNNING' || status==='SANDBOX_RUNNING' || status==='DONE';
+        chkSandbox.checked = status==='SANDBOX_RUNNING' || status==='DONE';
+    }
+    function renderSnapshot(snap){
+        const data=snap?.data||{};
+        outUrl.textContent = data.url || snap?.url || '—';
+        outVerdict.textContent = data.verdict || '—';
+        outScore.textContent = (data.score!=null) ? `${Math.round(Number(data.score)||0)}/100` : '—';
+        setStage(snap?.status || 'QUEUED');
+
+        // Expecting backend score as 0..100. If yours is 0..10, multiply by 10.
+        const pct = Math.max(0, Math.min(100, Math.round(Number(data.score)||0)));
+        setGauge(pct, data.verdict);
+
+        const reasons=Array.isArray(data.reasons)?data.reasons:[];
+        outReasons.innerHTML = reasons.length
+            ? reasons.map(r=>`<li>${r.reason} <span class="muted">(+${r.weight})</span></li>`).join('')
+            : '<li class="muted">—</li>';
+
+        const recos=[];
+        reasons.forEach(r=>{
+            if(r.name==='risky_tld') recos.push('Avoid free/risky TLDs for critical sign-ins.');
+            if(r.name==='no_tls') recos.push('No TLS—never enter credentials.');
+            if(r.name==='many_digits') recos.push('Numeric-heavy URLs can indicate phishing.');
+            if(r.name==='young_tls'||r.name==='young_domain') recos.push('Very new TLS/domain—be cautious.');
+        });
+        document.getElementById('recoList').innerHTML = recos.length
+            ? recos.map(x=>`<li>${x}</li>`).join('')
+            : '<li class="muted">No specific recommendations.</li>';
+
+        if(snap?.status==='DONE'){ btnSpin.style.display='none'; btnAnalyze.disabled=false; }
+    }
+
+    async function startScanFor(u){
+        clearErr();
+        const { cleanUrl, warnings } = sanitizeUrl(u);
+        if (!/^https?:\/\//i.test(cleanUrl)) {
+            return showErr("Enter a valid http(s) URL");
+        }
+
+        // Show any sanitization warnings immediately (and keep after result)
+        showWarnings(warnings);
+
+        btnSpin.style.display='inline-block'; btnAnalyze.disabled=true;
+        setStage('QUEUED'); setGauge(0, null);
+
+        try{
+            // Send the cleaned URL to your API
+            const { jobId } = await postJSON(`${API_BASE}/api/v1/scan`, { url: cleanUrl });
+
+            // Optional: pre-fill “URL:” field with the cleaned version
+            document.getElementById('outUrl').textContent = cleanUrl;
+
+            try{ renderSnapshot(await getJSON(`${API_BASE}/api/v1/scan/${jobId}`)); }catch(_){}
+            stream(jobId, renderSnapshot);
+        }catch(e){
+            showErr(e.message || 'Analyze failed');
+            btnSpin.style.display='none'; btnAnalyze.disabled=false;
+        }
+    }
+
+    $('btnAnalyze').addEventListener('click', ()=> startScanFor(urlInput.value.trim()));
+
+    // ---------- QR CAMERA ----------
+    let mediaStream=null, reader=null, rafId=null;
+    const video = $('video'), videoPanel=$('videoPanel');
+
+    async function startCamera(){
+        const { cleanUrl, warnings } = sanitizeUrl(text);
+        showWarnings(warnings);
+        startScanFor(cleanUrl);
+
+        try{
+            mediaStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
+            video.srcObject = mediaStream; videoPanel.style.display='block'; await video.play();
+
+            reader = new ZXing.BrowserQRCodeReader();
+            const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+            const tick = async () => {
+                if(!mediaStream) return;
+                try{
+                    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const dataURL = canvas.toDataURL('image/png');
+                    const img = new Image(); const p = new Promise(res=>img.onload=res); img.src=dataURL; await p;
+                    const res = await reader.decodeFromImage(img).catch(()=>null);
+                    const text = res?.text || res?.getText?.();
+                    if(text && /^https?:\/\//i.test(text)){ urlInput.value=text; stopCamera(); startScanFor(text); return; }
+                }catch(_){ /* keep scanning */ }
+                rafId = requestAnimationFrame(tick);
+            };
+            rafId = requestAnimationFrame(tick);
+        }catch(e){ showErr('Could not access camera. Use the HTTPS ngrok link and allow camera permission.'); }
+    }
+    function stopCamera(){
+        if(rafId) cancelAnimationFrame(rafId), rafId=null;
+        if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; }
+        if(video.srcObject) video.srcObject=null;
+        videoPanel.style.display='none'; reader=null;
+    }
+    $('btnStartCam').addEventListener('click', startCamera);
+    $('btnStopCam').addEventListener('click', stopCamera);
+
+    // ---------- QR from image ----------
+    $('qrFile').addEventListener('change', async (e)=>{
+        const file = e.target.files?.[0]; if(!file) return;
+        const readerFile = new FileReader();
+        const { cleanUrl, warnings } = sanitizeUrl(text);
+        showWarnings(warnings);
+        startScanFor(cleanUrl);
+
+        readerFile.onload = async () => {
+            try{
+                const img = new Image(); await new Promise(res => { img.onload=res; img.src = readerFile.result; });
+                const qr = new ZXing.BrowserQRCodeReader();
+                const res = await qr.decodeFromImage(img).catch(()=>null);
+                const text = res?.text || res?.getText?.();
+                if(text && /^https?:\/\//i.test(text)){ urlInput.value=text; startScanFor(text); }
+                else showErr('No QR URL detected in the image.');
+            }catch(_){ showErr('Failed to decode QR from image.'); }
+        };
+        readerFile.readAsDataURL(file);
+        // reset so same file can be chosen again later
+        e.target.value = '';
+    });
+
+        // Common tracking parameters we remove (extend as you like)
+        const TRACKING_KEYS = new Set([
+        "utm_source","utm_medium","utm_campaign","utm_term","utm_content",
+        "gclid","gbraid","wbraid","fbclid","mc_cid","mc_eid","igshid"
+        ]);
+
+        // Returns { cleanUrl, warnings: [..] }
+        function sanitizeUrl(input) {
+        const warnings = [];
+        let raw = (input || "")
+        .trim()
+        .replace(/^["'‘’“”]+|["'‘’“”]+$/g, "");        // strip surrounding quotes
+
+        // Normalize weird whitespace / zero-width chars
+        raw = raw.replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+        // Detect missing scheme
+        let addedScheme = false;
+        if (!/^https?:\/\//i.test(raw)) {
+        // Don’t auto-upgrade to https blindly; choose http so rules/redirects can decide
+        raw = "http://" + raw;
+        addedScheme = true;
+    }
+
+        let url;
+        try {
+        url = new URL(raw);
+    } catch {
+        // If URL constructor still fails, just return what we have; API will reject and UI shows error.
+        return { cleanUrl: raw, warnings };
+    }
+
+        // Remove common tracking params
+        let removed = [];
+        for (const key of Array.from(url.searchParams.keys())) {
+        if (TRACKING_KEYS.has(key.toLowerCase())) {
+        removed.push(key);
+        url.searchParams.delete(key);
+    }
+    }
+
+        if (addedScheme) warnings.push("The link had no ‘http/https’. We analyzed it as “" + url.href + "”.");
+        if (removed.length) warnings.push("Removed tracking parameters: " + removed.join(", ") + ".");
+
+        // Collapse multiple slashes in path (except protocol)
+        url.pathname = url.pathname.replace(/\/{2,}/g, "/");
+
+        // Lower-case host; keep path/query as-is
+        url.host = url.host.toLowerCase();
+
+        // Return canonical string
+        return { cleanUrl: url.toString(), warnings };
+    }
+
+        function showWarnings(warnings) {
+        const box = document.getElementById("warnBox");
+        const text = document.getElementById("warnText");
+        if (warnings && warnings.length) {
+        text.textContent = warnings.join(" ");
+        box.style.display = "block";
+    } else {
+        box.style.display = "none";
+        text.textContent = "";
+    }
+    }
+
+
+        // Surface errors on page (useful on iPhone)
+    window.addEventListener('error', e=>showErr(e.message||'script error'));
+    window.addEventListener('unhandledrejection', e=>showErr(e.reason?.message||'promise rejection'));
+</script>
+</body>
+</html>
