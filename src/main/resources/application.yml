@@ -1,0 +1,33 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/weblinkshield?useSSL=false&allowPublicKeyRetrieval=true
+    username: ws
+    password: ws
+
+  jpa:
+    hibernate:
+      ddl-auto: update   # dev only; switch to validate in prod
+    open-in-view: false
+
+  jackson:
+    serialization.write-dates-as-timestamps: false
+
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+# Swagger UI config (so /swagger-ui.html works)
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+server:
+  address: 0.0.0.0
+  port: 8080
+  servlet:
+    context-path: /
+
+# CORS (allow your React Native dev server / frontend)
+weblinkshield:
+  cors:
+    allowed-origins: "http://localhost:19006,http://localhost:3000"
