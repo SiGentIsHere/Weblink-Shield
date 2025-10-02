@@ -166,8 +166,8 @@
             <div class="checklist">
                 <label class="check"><input type="checkbox" id="chkHeur" disabled /> <span>URL heuristics</span></label>
                 <label class="check"><input type="checkbox" id="chkTls" disabled /> <span>TLD & TLS intel</span></label>
-                <label class="check"><input type="checkbox" id="chkStatic" disabled /> <span>Static analysis (Step 2)</span></label>
-                <label class="check"><input type="checkbox" id="chkSandbox" disabled /> <span>Sandbox (Step 3)</span></label>
+                <label class="check"><input type="checkbox" id="chkStatic" disabled /> <span>Static analysis</span></label>
+                <label class="check"><input type="checkbox" id="chkSandbox" disabled /> <span>Sandbox</span></label>
             </div>
 
             <hr/>
@@ -196,7 +196,8 @@
 <!-- ZXing already included above -->
 <script>
     // ---------- Helpers ----------
-    const API_BASE = window.location.origin;
+    //const API_BASE = "https://amalia-unshriven-lanceolately.ngrok-free.dev";
+    const API_BASE = window.location.origin
     const $ = id => document.getElementById(id);
     const ERR = $('err');
     function showErr(m){ ERR.textContent=m; ERR.style.display='block'; console.error(m) }
