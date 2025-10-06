@@ -195,9 +195,33 @@
 
 <!-- ZXing already included above -->
 <script>
+    // ---------- Scan button ----------
+    let currentSse = null;          // EventSource or fetch reader
+    let sseAbort  = null;           // AbortController for fetch-SSE
+    let isScanning = false;
+
+    function cancelStream(){
+        if (currentSse && currentSse.close) try { currentSse.close(); } catch(_) {}
+        if (sseAbort) try { sseAbort.abort(); } catch(_) {}
+        currentSse = null; sseAbort = null; isScanning = false;
+    }
+
+    function setBusy(){
+        isScanning = true;
+        btnSpin.style.display='inline-block';
+        btnAnalyze.disabled = false;                   // keep clickable to stop
+        btnAnalyze.innerText = 'Stop';
+    }
+    function setIdle(){
+        isScanning = false;
+        btnSpin.style.display='none';
+        btnAnalyze.disabled = false;
+        btnAnalyze.innerText = 'Scan';
+    }
+
     // ---------- Helpers ----------
-    //const API_BASE = "https://amalia-unshriven-lanceolately.ngrok-free.dev";
-    const API_BASE = window.location.origin
+    //const API_BASE = "https://amalia-unshriven-lanceolately.ngrok-free.dev";  //Testing for backend link (not working)
+    const API_BASE = window.location.origin;
     const $ = id => document.getElementById(id);
     const ERR = $('err');
     function showErr(m){ ERR.textContent=m; ERR.style.display='block'; console.error(m) }
@@ -231,127 +255,181 @@
     const gaugeStroke=$('gaugeStroke'), gaugeText=$('gaugeText'), riskBadge=$('riskBadge');
     const chkHeur=$('chkHeur'), chkTls=$('chkTls'), chkStatic=$('chkStatic'), chkSandbox=$('chkSandbox');
 
+    // Assume backend sends 0..100 where 100 == SAFE
+    function backendToSafePct(rawScore){
+        let s = Number(rawScore);
+        if (Number.isNaN(s)) s = 0;
+        // If backend still sends 0..10, uncomment next line:
+        if (s <= 10) s = s * 10;
+        s = Math.max(0, Math.min(100, Math.round(s)));
+        return 100 - s; // 100 == safest
+    }
+
     // ---------- Gauge / risk ----------
-    const CIRC = 2*Math.PI*102; // r=102 => 641
+    const CIRC = 2 * Math.PI * 102;
+
     function setGauge(pct, verdict){
         const v = Math.max(0, Math.min(100, pct|0));
-        gaugeStroke.style.strokeDashoffset = String(CIRC - (CIRC*v/100));
-        gaugeStroke.style.stroke = verdictColor(verdict) || '#2667ff';
+        gaugeStroke.style.strokeDashoffset = String(CIRC - (CIRC * v / 100));
+        gaugeStroke.style.stroke = verdictColorByPct(v) || '#2667ff';
         gaugeText.textContent = v + '%';
-        riskBadge.textContent = 'Risk Level: ' + (verdict? verdict.toUpperCase():'—');
-        riskBadge.className='riskBadge ' + riskClass(verdict);
+        riskBadge.textContent = 'Risk Level: ' + (verdict ? verdict.toUpperCase() : '—');
+        riskBadge.className = 'riskBadge ' + riskClassByPct(v);
     }
-    function verdictColor(v){ v=(v||'').toLowerCase();
-        if(v==='safe') return '#15a34a'; if(v==='suspicious') return '#f59e0b'; if(v==='malicious') return '#ef4444'; return '#2667ff';
+
+    function verdictColorByPct(pct){
+        if (pct >= 70) return '#15a34a';   // green safe
+        if (pct >= 40) return '#f59e0b';   // amber suspicious
+        return '#ef4444';                  // red malicious
     }
-    function riskClass(v){ v=(v||'').toLowerCase();
-        return v==='safe'?'risk-safe':v==='suspicious'?'risk-suspicious':v==='malicious'?'risk-malicious':'';
+    function riskClassByPct(pct){
+        if (pct >= 70) return 'risk-safe';
+        if (pct >= 40) return 'risk-suspicious';
+        return 'risk-malicious';
     }
-    function setStage(status){
-        const gray=el=>el.classList.add('muted'), blue=el=>el.classList.remove('muted');
-        [stQueued,stCore,stStatic,stSandbox,stDone].forEach(gray);
-        if(status==='QUEUED') blue(stQueued);
-        if(status==='CORE_RUNNING') blue(stCore);
-        if(status==='STATIC_RUNNING') blue(stStatic);
-        if(status==='SANDBOX_RUNNING') blue(stSandbox);
-        if(status==='DONE') blue(stDone);
-        // tick checkboxes roughly by stage
-        chkHeur.checked = status!=='QUEUED';
-        chkTls.checked = status==='CORE_RUNNING' || status==='STATIC_RUNNING' || status==='SANDBOX_RUNNING' || status==='DONE';
-        chkStatic.checked = status==='STATIC_RUNNING' || status==='SANDBOX_RUNNING' || status==='DONE';
-        chkSandbox.checked = status==='SANDBOX_RUNNING' || status==='DONE';
-    }
+
     function renderSnapshot(snap){
-        const data=snap?.data||{};
+        const data = snap?.data || {};
+        const safePct = backendToSafePct(data.score);
+
         outUrl.textContent = data.url || snap?.url || '—';
         outVerdict.textContent = data.verdict || '—';
-        outScore.textContent = (data.score!=null) ? `${Math.round(Number(data.score)||0)}/100` : '—';
+        outScore.textContent = `${safePct}/100`;
+
         setStage(snap?.status || 'QUEUED');
+        setGauge(safePct, data.verdict);
 
-        // Expecting backend score as 0..100. If yours is 0..10, multiply by 10.
-        const pct = Math.max(0, Math.min(100, Math.round(Number(data.score)||0)));
-        setGauge(pct, data.verdict);
-
-        const reasons=Array.isArray(data.reasons)?data.reasons:[];
+        const reasons = Array.isArray(data.reasons) ? data.reasons : [];
         outReasons.innerHTML = reasons.length
-            ? reasons.map(r=>`<li>${r.reason} <span class="muted">(+${r.weight})</span></li>`).join('')
+            ? reasons.map(r => `<li>${r.reason} <span class="muted">(+${r.weight})</span></li>`).join('')
             : '<li class="muted">—</li>';
 
-        const recos=[];
-        reasons.forEach(r=>{
-            if(r.name==='risky_tld') recos.push('Avoid free/risky TLDs for critical sign-ins.');
-            if(r.name==='no_tls') recos.push('No TLS—never enter credentials.');
-            if(r.name==='many_digits') recos.push('Numeric-heavy URLs can indicate phishing.');
-            if(r.name==='young_tls'||r.name==='young_domain') recos.push('Very new TLS/domain—be cautious.');
+        const recos = [];
+        reasons.forEach(r => {
+            if (r.name === 'risky_tld') recos.push('Avoid free/risky TLDs for sign-ins.');
+            if (r.name === 'no_tls') recos.push('No HTTPS—do not enter credentials.');
+            if (r.name === 'many_digits') recos.push('Numeric-heavy URLs often indicate phishing.');
+            if (r.name === 'young_tls' || r.name === 'young_domain') recos.push('Very new cert/domain—be cautious.');
         });
         document.getElementById('recoList').innerHTML = recos.length
-            ? recos.map(x=>`<li>${x}</li>`).join('')
+            ? recos.map(x => `<li>${x}</li>`).join('')
             : '<li class="muted">No specific recommendations.</li>';
 
-        if(snap?.status==='DONE'){ btnSpin.style.display='none'; btnAnalyze.disabled=false; }
+        if (snap?.status === 'DONE') { btnSpin.style.display='none'; btnAnalyze.disabled=false; }
     }
 
+    // ---------- Stage indicator ----------
+    function setStage(stageRaw){
+        const stage = String(stageRaw || '').toUpperCase();
+        const items = [
+            ['QUEUED',  stQueued],
+            ['CORE',    stCore],
+            ['STATIC',  stStatic],
+            ['SANDBOX', stSandbox],
+            ['DONE',    stDone],
+        ];
+        // reset appearance
+        items.forEach(([, el]) => {
+            el.style.opacity = .4;
+            el.style.color = '';
+            el.style.fontWeight = 'normal';
+        });
+        // highlight current + previous
+        let highlight = true;
+        for (const [name, el] of items){
+            if (highlight){
+                el.style.opacity = 1;
+                el.style.color   = '#2667ff';
+                el.style.fontWeight = '700';
+            }
+            if (name === stage) highlight = false;
+        }
+    }
+
+    //----------- Scan button ------------ //
     async function startScanFor(u){
         clearErr();
-        const { cleanUrl, warnings } = sanitizeUrl(u);
-        if (!/^https?:\/\//i.test(cleanUrl)) {
-            return showErr("Enter a valid http(s) URL");
-        }
+        cancelStream();             // stop any previous stream
+        setStage('QUEUED');
+        setGauge(0, null);
+        setBusy();
 
-        // Show any sanitization warnings immediately (and keep after result)
+        const { cleanUrl, warnings } = sanitizeUrl(u);
         showWarnings(warnings);
 
-        btnSpin.style.display='inline-block'; btnAnalyze.disabled=true;
-        setStage('QUEUED'); setGauge(0, null);
-
         try{
-            // Send the cleaned URL to your API
             const { jobId } = await postJSON(`${API_BASE}/api/v1/scan`, { url: cleanUrl });
-
-            // Optional: pre-fill “URL:” field with the cleaned version
             document.getElementById('outUrl').textContent = cleanUrl;
 
+            // optimistic snapshot if you want
             try{ renderSnapshot(await getJSON(`${API_BASE}/api/v1/scan/${jobId}`)); }catch(_){}
-            stream(jobId, renderSnapshot);
+
+            stream(jobId, renderSnapshot); // begin SSE
         }catch(e){
             showErr(e.message || 'Analyze failed');
-            btnSpin.style.display='none'; btnAnalyze.disabled=false;
+            setIdle();
         }
     }
 
-    $('btnAnalyze').addEventListener('click', ()=> startScanFor(urlInput.value.trim()));
+    btnAnalyze.addEventListener('click', () => {
+        clearErr();
+        if (isScanning){
+            // Clicking again stops the current stream
+            cancelStream();
+            setIdle();
+            return;
+        }
+        const u = urlInput.value.trim();
+        if (!u){ showErr('Enter a URL'); return; }
+        startScanFor(u);
+    });
 
     // ---------- QR CAMERA ----------
     let mediaStream=null, reader=null, rafId=null;
     const video = $('video'), videoPanel=$('videoPanel');
 
     async function startCamera(){
-        const { cleanUrl, warnings } = sanitizeUrl(text);
-        showWarnings(warnings);
-        startScanFor(cleanUrl);
-
+        clearErr();
         try{
             mediaStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
             video.srcObject = mediaStream; videoPanel.style.display='block'; await video.play();
 
             reader = new ZXing.BrowserQRCodeReader();
             const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+
             const tick = async () => {
                 if(!mediaStream) return;
                 try{
                     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                     const dataURL = canvas.toDataURL('image/png');
-                    const img = new Image(); const p = new Promise(res=>img.onload=res); img.src=dataURL; await p;
-                    const res = await reader.decodeFromImage(img).catch(()=>null);
+
+                    const img = new Image();
+                    await new Promise(res => { img.onload = res; img.src = dataURL; });
+
+                    const res  = await reader.decodeFromImage(img).catch(()=>null);
                     const text = res?.text || res?.getText?.();
-                    if(text && /^https?:\/\//i.test(text)){ urlInput.value=text; stopCamera(); startScanFor(text); return; }
-                }catch(_){ /* keep scanning */ }
+
+                    if (text){
+                        const { cleanUrl, warnings } = sanitizeUrl(text);
+                        showWarnings(warnings);
+                        if (/^https?:\/\//i.test(cleanUrl)){
+                            urlInput.value = cleanUrl;
+                            stopCamera();
+                            startScanFor(cleanUrl);
+                            return;
+                        }
+                    }
+                }catch(_) { /* keep scanning */ }
                 rafId = requestAnimationFrame(tick);
             };
             rafId = requestAnimationFrame(tick);
-        }catch(e){ showErr('Could not access camera. Use the HTTPS ngrok link and allow camera permission.'); }
+
+        }catch(e){
+            showErr('Could not access camera. Use the HTTPS ngrok link and allow camera permission.');
+        }
     }
+
     function stopCamera(){
         if(rafId) cancelAnimationFrame(rafId), rafId=null;
         if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; }
@@ -364,24 +442,36 @@
     // ---------- QR from image ----------
     $('qrFile').addEventListener('change', async (e)=>{
         const file = e.target.files?.[0]; if(!file) return;
-        const readerFile = new FileReader();
-        const { cleanUrl, warnings } = sanitizeUrl(text);
-        showWarnings(warnings);
-        startScanFor(cleanUrl);
+        clearErr();
 
+        const readerFile = new FileReader();
         readerFile.onload = async () => {
             try{
-                const img = new Image(); await new Promise(res => { img.onload=res; img.src = readerFile.result; });
-                const qr = new ZXing.BrowserQRCodeReader();
+                const img = new Image();
+                await new Promise(res => { img.onload = res; img.src = readerFile.result; });
+
+                const qr  = new ZXing.BrowserQRCodeReader();
                 const res = await qr.decodeFromImage(img).catch(()=>null);
                 const text = res?.text || res?.getText?.();
-                if(text && /^https?:\/\//i.test(text)){ urlInput.value=text; startScanFor(text); }
-                else showErr('No QR URL detected in the image.');
-            }catch(_){ showErr('Failed to decode QR from image.'); }
+
+                if (text){
+                    const { cleanUrl, warnings } = sanitizeUrl(text);
+                    showWarnings(warnings);
+                    if (/^https?:\/\//i.test(cleanUrl)){
+                        urlInput.value = cleanUrl;
+                        startScanFor(cleanUrl);
+                    } else {
+                        showErr('The QR does not contain a valid http(s) URL.');
+                    }
+                } else {
+                    showErr('No QR URL detected in the image.');
+                }
+            }catch(_){
+                showErr('Failed to decode QR from image.');
+            }
         };
         readerFile.readAsDataURL(file);
-        // reset so same file can be chosen again later
-        e.target.value = '';
+        e.target.value = ''; // allow re-uploading the same file
     });
 
         // Common tracking parameters we remove (extend as you like)
