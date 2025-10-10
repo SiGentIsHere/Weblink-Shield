@@ -33,6 +33,7 @@ interface AuthContextType {
   userProfile: SimpleUserProfile | null;
   loading: boolean;
   isAuthenticated: boolean;
+  isEmailVerified: boolean;
 
   // Auth actions
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -43,6 +44,7 @@ interface AuthContextType {
   }) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  sendEmailVerification: () => Promise<{ success: boolean; error?: string }>;
 
   // User profile actions
   updateProfile: (updates: Partial<SimpleUserProfile>) => Promise<{ success: boolean; error?: string }>;
@@ -74,6 +76,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const isAuthenticated = !!user && !!userProfile;
+  const isEmailVerified = user?.email_confirmed_at !== null;
 
   // Fetch user profile from database
   const fetchUserProfile = async (authUser: SupabaseUser): Promise<SimpleUserProfile | null> => {
@@ -81,12 +84,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('📝 Fetching user profile for:', authUser.email);
       
       const { data: userData, error: userError } = await supabase
-        .from('"User"')
+        .from('users')
         .select(`
           *,
-          role:Role(*),
-          subscription:Subscription(*),
-          plan:Plan(*)
+          role:role(*),
+          subscription:subscription(
+            *,
+            plan:plan(*)
+          )
         `)
         .eq('auth_user_id', authUser.id)
         .single();
@@ -131,7 +136,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // Get the Free role ID (role_id = 1)
       const { data: freeRole, error: roleError } = await supabase
-        .from('Role')
+        .from('role')
         .select('role_id')
         .eq('name', 'Free')
         .single();
@@ -157,7 +162,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Create user profile
       const { data: newUser, error: userError } = await supabase
-        .from('"User"')
+        .from('users')
         .insert({
           auth_user_id: authUser.id,
           email: authUser.email!,
@@ -177,7 +182,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Create free subscription
       const { data: freePlan } = await supabase
-        .from('Plan')
+        .from('plan')
         .select('plan_id')
         .eq('name', 'Free')
         .single();
@@ -187,7 +192,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const endDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // 1 year
 
         await supabase
-          .from('Subscription')
+          .from('subscription')
           .insert({
             user_id: (newUser as any).user_id,
             plan_id: (freePlan as any).plan_id,
@@ -214,7 +219,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       // Get the Free role ID (role_id = 1)
       const { data: freeRole } = await supabase
-        .from('Role')
+        .from('role')
         .select('role_id')
         .eq('name', 'Free')
         .single();
@@ -225,7 +230,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Create user profile
       const { data: newUser, error: userError } = await supabase
-        .from('"User"')
+        .from('users')
         .insert({
           auth_user_id: authUser.id,
           email: authUser.email!,
@@ -244,7 +249,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Create free subscription
       const { data: freePlan } = await supabase
-        .from('Plan')
+        .from('plan')
         .select('plan_id')
         .eq('name', 'Free')
         .single();
@@ -254,7 +259,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const endDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // 1 year
 
         await supabase
-          .from('Subscription')
+          .from('subscription')
           .insert({
             user_id: (newUser as any).user_id,
             plan_id: (freePlan as any).plan_id,
@@ -354,6 +359,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             last_name: userData.lastName,
             username: userData.username,
           },
+          emailRedirectTo: undefined, // Disable email verification
         },
       });
 
@@ -397,6 +403,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       }
 
+      // If user has a session (no email verification required), sign them in automatically
+      if (data.session) {
+        console.log('🔐 User automatically signed in');
+        // The auth state change will be handled by the auth listener
+      }
+
       return { success: true };
     } catch (error: any) {
       console.error('❌ Sign up exception:', error);
@@ -437,7 +449,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       const { error } = await (supabase as any)
-        .from('"User"')
+        .from('users')
         .update(updates)
         .eq('user_id', userProfile.user_id);
 
@@ -463,6 +475,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Check if user can perform scan
   const canPerformScan = (): boolean => {
+    // Require email verification for scanning
+    if (!isEmailVerified) return false;
     if (!userProfile?.usage_stats) return false;
     return !userProfile.usage_stats.limit_reached;
   };
@@ -518,11 +532,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, []);
 
+  // Send email verification
+  const sendEmailVerification = async () => {
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: user?.email || '',
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Failed to send verification email' };
+    }
+  };
+
   const value: AuthContextType = {
     user,
     userProfile,
     loading,
     isAuthenticated,
+    isEmailVerified,
     signIn,
     signUp,
     signOut,
@@ -532,6 +565,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     canPerformScan,
     getRemainingScans,
     getUsageStats,
+    sendEmailVerification,
   };
 
   return (

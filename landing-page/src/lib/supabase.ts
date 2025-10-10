@@ -73,3 +73,17 @@ const testConnection = async () => {
 };
 
 testConnection();
+
+// Helper function to clear stuck sessions (useful for debugging)
+// Call this from browser console: window.clearSupabaseSession()
+if (typeof window !== 'undefined') {
+  (window as any).clearSupabaseSession = async () => {
+    console.log('🧹 Clearing Supabase session...');
+    await supabase.auth.signOut();
+    localStorage.clear();
+    sessionStorage.clear();
+    console.log('✅ Session cleared! Reloading page...');
+    window.location.reload();
+  };
+  console.log('💡 If you have a stuck session, run: window.clearSupabaseSession()');
+}

@@ -62,7 +62,7 @@ export const useUsage = () => {
 
     try {
       const { data, error } = await supabase
-        .from('UsageCounter')
+        .from('usagecounter')
         .select('*')
         .eq('user_id', userProfile.user_id)
         .order('period_start', { ascending: false })

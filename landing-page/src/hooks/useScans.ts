@@ -18,14 +18,14 @@ export const useScans = () => {
       setError(null);
 
       const { data, error } = await supabase
-        .from('Scan')
+        .from('scan')
         .select(`
           *,
-          detailed_report:DetailedReport(
+          detailed_report:detailedreport(
             *,
-            score_report:ScoreReport(*)
+            score_report:scorereport(*)
           ),
-          threat_summaries:ThreatSummary(*)
+          threat_summaries:threatsummary(*)
         `)
         .eq('user_id', userProfile.user_id)
         .order('submitted_at', { ascending: false });
@@ -50,7 +50,7 @@ export const useScans = () => {
 
     try {
       const { data, error } = await supabase
-        .from('Scan')
+        .from('scan')
         .insert({
           user_id: userProfile.user_id,
           url_scanned: url,
@@ -90,7 +90,7 @@ export const useScans = () => {
       }
 
       const { error } = await supabase
-        .from('Scan')
+        .from('scan')
         .update(updates)
         .eq('scan_id', scanId);
 
@@ -113,7 +113,7 @@ export const useScans = () => {
 
     try {
       const { error } = await supabase
-        .from('History')
+        .from('history')
         .insert({
           user_id: userProfile.user_id,
           scan_id: scanId,
@@ -137,7 +137,7 @@ export const useScans = () => {
 
     try {
       const { error } = await supabase
-        .from('History')
+        .from('history')
         .delete()
         .eq('user_id', userProfile.user_id)
         .eq('scan_id', scanId);
@@ -154,14 +154,14 @@ export const useScans = () => {
   const getScanDetails = async (scanId: number): Promise<ScanWithDetails | null> => {
     try {
       const { data, error } = await supabase
-        .from('Scan')
+        .from('scan')
         .select(`
           *,
-          detailed_report:DetailedReport(
+          detailed_report:detailedreport(
             *,
-            score_report:ScoreReport(*)
+            score_report:scorereport(*)
           ),
-          threat_summaries:ThreatSummary(*)
+          threat_summaries:threatsummary(*)
         `)
         .eq('scan_id', scanId)
         .single();
@@ -188,7 +188,7 @@ export const useScans = () => {
         {
           event: '*',
           schema: 'public',
-          table: 'Scan',
+          table: 'scan',
           filter: `user_id=eq.${userProfile.user_id}`,
         },
         (payload) => {

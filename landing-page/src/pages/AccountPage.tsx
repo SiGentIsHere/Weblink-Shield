@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Shield, User as UserIcon, ChevronRight, Trash2, Star, LogOut, Scan, History, AlertTriangle } from 'lucide-react';
+import { Shield, User as UserIcon, ChevronRight, Trash2, Star, LogOut, Scan, History, AlertTriangle, Mail, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useUsage } from '../hooks/useUsage';
 import { useScans } from '../hooks/useScans';
 import { useHistory } from '../hooks/useHistory';
+import EmailVerificationBanner from '../components/EmailVerificationBanner';
 
 interface AccountPageProps {
   onNavigate: (page: 'home' | 'auth' | 'account') => void;
@@ -28,7 +29,7 @@ const StatCard: React.FC<{ title: string; children?: React.ReactNode; actionLabe
 };
 
 const AccountPage: React.FC<AccountPageProps> = ({ onNavigate }) => {
-  const { userProfile, signOut, loading } = useAuth();
+  const { userProfile, signOut, loading, isEmailVerified } = useAuth();
   const { usageStats, getUsagePercentage, getPlanLimits, canPerformScan } = useUsage();
   const { scans } = useScans();
   const { history } = useHistory();
@@ -81,6 +82,9 @@ const AccountPage: React.FC<AccountPageProps> = ({ onNavigate }) => {
   return (
     <section className="py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
+        {/* Email Verification Banner */}
+        <EmailVerificationBanner />
+        
         {/* Header / Brand */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-3">
@@ -125,8 +129,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onNavigate }) => {
               <div className="text-xs text-gray-600 truncate max-w-[200px] sm:max-w-xs">
                 {userProfile.email}
               </div>
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-xs text-gray-500 mt-1 flex items-center">
                 {userProfile.role?.name} Plan
+                <span className="ml-2 flex items-center">
+                  {isEmailVerified ? (
+                    <CheckCircle className="w-3 h-3 text-green-500" title="Email verified" />
+                  ) : (
+                    <Mail className="w-3 h-3 text-yellow-500" title="Email not verified" />
+                  )}
+                </span>
               </div>
             </div>
           </div>

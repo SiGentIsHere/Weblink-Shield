@@ -56,14 +56,14 @@ const DiagnosticPage: React.FC = () => {
     // Test 3: Database Tables
     addResult('Database Test', 'info', 'Checking database tables...');
     try {
-      const { data: roles, error: roleError } = await supabase.from('Role').select('*').limit(1);
+      const { data: roles, error: roleError } = await supabase.from('role').select('*').limit(1);
       if (roleError) {
         addResult('Database Test', 'error', `Role table error: ${roleError.message}`, roleError);
       } else {
         addResult('Database Test', 'success', 'Role table accessible', { roles });
       }
 
-      const { data: plans, error: planError } = await supabase.from('Plan').select('*').limit(1);
+      const { data: plans, error: planError } = await supabase.from('plan').select('*').limit(1);
       if (planError) {
         addResult('Database Test', 'error', `Plan table error: ${planError.message}`, planError);
       } else {

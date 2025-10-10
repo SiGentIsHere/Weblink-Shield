@@ -18,16 +18,16 @@ export const useHistory = () => {
       setError(null);
 
       const { data, error } = await supabase
-        .from('History')
+        .from('history')
         .select(`
           *,
-          scan:Scan(
+          scan:scan(
             *,
-            detailed_report:DetailedReport(
+            detailed_report:detailedreport(
               *,
-              score_report:ScoreReport(*)
+              score_report:scorereport(*)
             ),
-            threat_summaries:ThreatSummary(*)
+            threat_summaries:threatsummary(*)
           )
         `)
         .eq('user_id', userProfile.user_id)
@@ -53,7 +53,7 @@ export const useHistory = () => {
 
     try {
       const { error } = await supabase
-        .from('History')
+        .from('history')
         .insert({
           user_id: userProfile.user_id,
           scan_id: scanId,
@@ -80,7 +80,7 @@ export const useHistory = () => {
 
     try {
       const { error } = await supabase
-        .from('History')
+        .from('history')
         .delete()
         .eq('user_id', userProfile.user_id)
         .eq('scan_id', scanId);
@@ -104,7 +104,7 @@ export const useHistory = () => {
 
     try {
       const { error } = await supabase
-        .from('History')
+        .from('history')
         .update(updates)
         .eq('user_id', userProfile.user_id)
         .eq('scan_id', scanId);
@@ -144,7 +144,7 @@ export const useHistory = () => {
         {
           event: '*',
           schema: 'public',
-          table: 'History',
+          table: 'history',
           filter: `user_id=eq.${userProfile.user_id}`,
         },
         (payload) => {

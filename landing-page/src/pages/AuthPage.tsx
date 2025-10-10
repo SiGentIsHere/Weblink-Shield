@@ -93,9 +93,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onNavigate }) => {
           return;
         }
         
-        // Show success message and navigate
-        setErrors({ general: 'Account created successfully! You can now sign in.' });
-        setIsSignUp(false); // Switch to sign in mode
+        // Show success message and navigate to account page
+        setErrors({ general: '✅ Completed!' });
+        // The auth state change will handle the navigation automatically
+        onNavigate('account');
       } else {
         const result = await signIn(formData.email, formData.password);
         
